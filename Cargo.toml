@@ -1,0 +1,3 @@
+[workspace]
+
+members = ["compiler", "language-server", "parser", "analyzer", "ares_core"]

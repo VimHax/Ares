@@ -1,0 +1,6 @@
+[package]
+name = "ares_core"
+version = "1.0.0"
+authors = ["VimHax <vimhax@vimprojects.com>"]
+edition = "2018"
+[dependencies]

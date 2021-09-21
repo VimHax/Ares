@@ -1,0 +1,16 @@
+fn fib(term: Int) -> Int {
+	if term == 0 { 0 }
+	else if term == 1 { 1 }
+	else { fib(term - 1) + fib(term - 2) }
+}
+
+fn main() {
+	let count = 0;
+	loop {
+		if count == 10 {
+			return;
+		}
+		print(fib(count));
+		count = count + 1;
+	}
+}

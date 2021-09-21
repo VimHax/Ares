@@ -1,0 +1,7 @@
+[package]
+name = "analyzer"
+version = "1.0.0"
+authors = ["VimHax <vimhax@vimprojects.com>"]
+edition = "2018"
+[dependencies]
+ares_core = { path = "../ares_core" }

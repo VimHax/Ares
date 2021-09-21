@@ -1,0 +1,13 @@
+[package]
+name = "compiler"
+version = "1.0.0"
+authors = ["VimHax <vimhax@vimprojects.com>"]
+edition = "2018"
+[dependencies]
+ares_core = { path = "../ares_core" }
+parser = { path = "../parser" }
+analyzer = { path = "../analyzer" }
+libc = "0.2.94"
+llvm-sys = "120.0.0"
+codespan-reporting = "0.11.1"
+clap = "2.33.3"
