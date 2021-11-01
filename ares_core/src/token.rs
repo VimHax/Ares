@@ -2,7 +2,7 @@ use std::{fmt::Debug, ops::Range};
 
 /// A code snippet within a source.
 /// Only way a `Span` can be built is with a `PartialSpan`.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Span(usize, usize);
 
 impl Span {
@@ -71,6 +71,12 @@ impl PartialSpan {
 /// Capable of being converted to a `Span`.
 pub trait SpanLike {
 	fn build(self) -> Span;
+}
+
+impl SpanLike for Range<usize> {
+	fn build(self) -> Span {
+		Span::new(self.start, self.end)
+	}
 }
 
 impl SpanLike for Span {
@@ -339,7 +345,7 @@ impl<'a> TokenKindResolvable for Literal {
 
 /// An atomic element of Ares source code.
 /// It stores the location and the type (kind) of element.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Token {
 	kind: TokenKind,
 	span: Span,

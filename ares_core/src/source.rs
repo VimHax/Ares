@@ -79,7 +79,11 @@ impl Source {
 		&self.contents
 	}
 
-	pub fn span_content(&self, span: &Span) -> &str {
-		&self.contents[span.start()..span.end()]
+	pub fn span_content(&self, span: &Span) -> String {
+		self.contents
+			.chars()
+			.take(span.end())
+			.skip(span.start())
+			.collect()
 	}
 }

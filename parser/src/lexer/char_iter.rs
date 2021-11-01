@@ -71,7 +71,7 @@ impl<'a> CharIter<'a> {
 		Some(self.current_char()?.is_whitespace())
 	}
 
-	/// Checks whether the current character is `0` to `9`.
+	/// Checks whether the current character is from `0` to `9`.
 	pub fn is_numeric(&self) -> Option<bool> {
 		let c = self.current_char()?;
 		Some(c >= '0' && c <= '9')
