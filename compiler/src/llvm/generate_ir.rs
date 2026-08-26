@@ -14,11 +14,20 @@ pub struct DataTypes {
 	pub float: LLVMTypeRef,
 	pub boolean: LLVMTypeRef,
 	pub string: LLVMTypeRef,
+	pub array: LLVMTypeRef,
 	pub void: LLVMTypeRef,
 }
 
 /// Global `print` variants for all possible input types.
 pub struct PrintFns {
+	pub int: LLVMValueRef,
+	pub float: LLVMValueRef,
+	pub boolean: LLVMValueRef,
+	pub string: LLVMValueRef,
+}
+
+/// Global array element function variants for all possible input types.
+pub struct ArrayElementFns {
 	pub int: LLVMValueRef,
 	pub float: LLVMValueRef,
 	pub boolean: LLVMValueRef,
@@ -36,6 +45,7 @@ pub struct Environment<'a> {
 	datatypes: DataTypes,
 	fns: HashMap<String, LLVMValueRef>,
 	print_fns: PrintFns,
+	array_element_fns: ArrayElementFns,
 	string_len_fn: LLVMValueRef,
 	scopes: Vec<HashMap<&'a str, LLVMValueRef>>,
 	loops: Vec<LLVMBasicBlockRef>,
@@ -53,6 +63,10 @@ impl<'a> Environment<'a> {
 
 	pub fn print_fns(&self) -> &PrintFns {
 		&self.print_fns
+	}
+
+	pub fn array_element_fns(&self) -> &ArrayElementFns {
+		&self.array_element_fns
 	}
 
 	pub fn string_len_fn(&self) -> LLVMValueRef {
@@ -118,7 +132,10 @@ pub unsafe fn ty_to_ir(ty: &Ty, datatypes: &DataTypes) -> LLVMTypeRef {
 		Ty::Never(_) => unreachable!(),
 		Ty::Unknown(_, _) => unreachable!(),
 		Ty::TyRef(_) => unreachable!(),
-		Ty::Array(_, _) => todo!(),
+		Ty::Array(ty, _) => match ty.as_ref() {
+			Ty::Int(_) | Ty::Float(_) | Ty::String(_) | Ty::Boolean(_) => datatypes.array,
+			_ => todo!(),
+		},
 		Ty::Possibility(_, _, _) => unreachable!(),
 		Ty::Union(_, _) => todo!(),
 		Ty::Fn(p, r, _) => LLVMFunctionType(
@@ -159,10 +176,12 @@ pub unsafe fn generate_ir(
 	ctx: &Ctx,
 	ast: &AST<Analyzed>,
 ) {
-	let i32_type = LLVMInt32TypeInContext(context); // i32
 	let i8_type = LLVMInt8TypeInContext(context); // i8
 	let i8_ptr_type = LLVMPointerType(i8_type, 0); // *i8
 	let void_type = LLVMVoidTypeInContext(context); // void
+	let void_ptr_type = LLVMPointerType(void_type, 0); // *void
+	let i32_type = LLVMInt32TypeInContext(context);
+	let i64_type = LLVMInt64TypeInContext(context);
 
 	let builder = LLVMCreateBuilderInContext(context);
 	assert!(!builder.is_null());
@@ -172,12 +191,23 @@ pub unsafe fn generate_ir(
 		int: LLVMInt64TypeInContext(context),    // i64
 		float: LLVMDoubleTypeInContext(context), // f64
 		boolean: LLVMInt1TypeInContext(context), // i1
-		/// String { length: i64, chars: *i8 }
+		// String { length: i64, chars: *i8 }
 		string: {
 			let name = CString::new("String").unwrap();
 			let struct_type = LLVMStructCreateNamed(context, name.as_ptr());
-			let i64_type = LLVMInt64TypeInContext(context);
 			LLVMStructSetBody(struct_type, vec![i64_type, i8_ptr_type].as_mut_ptr(), 2, 0);
+			struct_type
+		},
+		// Array { length: i64, element_size: i64, data: *void }
+		array: {
+			let name = CString::new("Array").unwrap();
+			let struct_type = LLVMStructCreateNamed(context, name.as_ptr());
+			LLVMStructSetBody(
+				struct_type,
+				vec![i64_type, i64_type, void_ptr_type].as_mut_ptr(),
+				3,
+				0,
+			);
 			struct_type
 		},
 	};
@@ -189,32 +219,40 @@ pub unsafe fn generate_ir(
 		string: add_function(module, "print_string", &mut [datatypes.string], void_type),
 	};
 
-	// String#len() method implementation.
-	let string_len_fn = {
-		// Declare fn get-string-len(self) -> Int
-		let fn_type = LLVMFunctionType(datatypes.int, vec![datatypes.string].as_mut_ptr(), 1, 0);
-		assert!(!fn_type.is_null());
-		let name = CString::new("get-string-len").unwrap();
-		let f = LLVMAddFunction(module, name.as_ptr(), fn_type);
-		assert!(!f.is_null());
-
-		// Create the function body.
-		let name = CString::new("entry").unwrap();
-		let bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-		assert!(!bb.is_null());
-		LLVMPositionBuilderAtEnd(builder, bb);
-
-		// Get the string length field from the String struct. (String.length)
-		let string = LLVMGetParam(f, 0);
-		let name = CString::new("string-len-ptr").unwrap();
-		let string_len = LLVMBuildStructGEP2(builder, datatypes.string, string, 0, name.as_ptr());
-		let name = CString::new("string-len").unwrap();
-		let string_len = LLVMBuildLoad(builder, string_len, name.as_ptr());
-
-		// Return the Int.
-		LLVMBuildRet(builder, string_len);
-		f
+	let array_element_fns = ArrayElementFns {
+		int: add_function(
+			module,
+			"get_array_element_int",
+			&mut [datatypes.array, datatypes.int],
+			datatypes.int,
+		),
+		float: add_function(
+			module,
+			"get_array_element_float",
+			&mut [datatypes.array, datatypes.int],
+			datatypes.float,
+		),
+		boolean: add_function(
+			module,
+			"get_array_element_boolean",
+			&mut [datatypes.array, datatypes.int],
+			datatypes.boolean,
+		),
+		string: add_function(
+			module,
+			"get_array_element_string",
+			&mut [datatypes.array, datatypes.int],
+			datatypes.string,
+		),
 	};
+
+	// String#len() method implementation.
+	let string_len_fn = add_function(
+		module,
+		"get_string_len",
+		&mut [datatypes.string],
+		datatypes.int,
+	);
 
 	// Generate all the function declarations ahead of time
 	// to support self and forward references.
@@ -242,6 +280,7 @@ pub unsafe fn generate_ir(
 		fns,
 		string_len_fn,
 		print_fns,
+		array_element_fns,
 		scopes: vec![],
 		loops: vec![],
 		current_fn: None,
@@ -284,7 +323,9 @@ pub unsafe fn generate_ir(
 				if !f.body().exit_status().will_exit() {
 					// If the function returns a value then return it otherwise
 					// return void.
-					if let Some(res) = res {
+					if f.name() == "main" {
+						LLVMBuildRet(builder, LLVMConstInt(i32_type, 0, 0));
+					} else if let Some(res) = res {
 						LLVMBuildRet(builder, res);
 					} else {
 						LLVMBuildRetVoid(builder);

@@ -6,6 +6,8 @@ use analyzer::{
 	ty::{Ctx, Ty},
 };
 
+use crate::llvm::generate_ir::ty_to_ir;
+
 use super::{generate_ir::Environment, stmt::generate_stmt};
 
 /// Generate LLVM IR for an AST `Expression<Analyzed>` node.
@@ -25,53 +27,85 @@ pub unsafe fn generate_expr<'a>(
 			LiteralValue::Float(v) => LLVMConstReal(env.datatypes().float, *v),
 			LiteralValue::Boolean(v) => LLVMConstInt(env.datatypes().boolean, *v as u64, 0),
 			LiteralValue::String(v) => {
-				let name = CString::new("str").unwrap();
-				// Allocate a String struct on the stack.
-				let value = LLVMBuildAlloca(env.builder(), env.datatypes().string, name.as_ptr());
-				let name = CString::new("str-length").unwrap();
-				// Get a pointer to length field in the struct.
-				let length = LLVMBuildStructGEP2(
-					env.builder(),
+				// Create a global string with the contents of this literal.
+				let str_contents = {
+					let contents = CString::new(v.as_str()).unwrap();
+					let name = CString::new("static-str").unwrap();
+					LLVMBuildGlobalString(env.builder(), contents.as_ptr(), name.as_ptr())
+				};
+				LLVMConstNamedStruct(
 					env.datatypes().string,
-					value,
-					0,
-					name.as_ptr(),
-				);
-				// Store the length to the length field.
-				LLVMBuildStore(
+					[
+						LLVMConstInt(
+							LLVMStructGetTypeAtIndex(env.datatypes().string, 0),
+							v.len() as u64,
+							0,
+						),
+						str_contents,
+					]
+					.as_mut_ptr(),
+					2,
+				)
+			}
+		}),
+		Expression::Array(e) => {
+			let mut elements = e
+				.elements()
+				.iter()
+				.map(|expr| generate_expr(ctx, expr, env).expect("can't be void"))
+				.collect::<Vec<_>>();
+
+			let Ty::Array(element_ty, _) = ctx.resolve_ref(&e.ty()) else {
+				panic!("must be an array");
+			};
+			let element_ty = ty_to_ir(element_ty, env.datatypes());
+
+			// https://stackoverflow.com/a/30830445/10685858
+			let element_pointer_ty = LLVMPointerType(element_ty, 0);
+			let size = {
+				let ptr = LLVMBuildGEP(
 					env.builder(),
-					LLVMConstInt(
-						LLVMStructGetTypeAtIndex(env.datatypes().string, 0),
-						v.len() as u64,
-						0,
-					),
-					length,
-				);
-				let name = CString::new("str-contents").unwrap();
-				// Get a pointer to the chars field of the struct.
-				let contents = LLVMBuildStructGEP2(
-					env.builder(),
-					env.datatypes().string,
-					value,
+					LLVMConstNull(element_pointer_ty),
+					[LLVMConstInt(LLVMInt32TypeInContext(env.context()), 1, 0)].as_mut_ptr(),
 					1,
 					name.as_ptr(),
 				);
-				let str_contents = CString::new(v.as_str()).unwrap();
-				let name = CString::new("static-str").unwrap();
-				// Create a global string with the contents of this literal.
-				let str_contents =
-					LLVMBuildGlobalStringPtr(env.builder(), str_contents.as_ptr(), name.as_ptr());
-				// Store the contents to the chars field.
-				LLVMBuildStore(env.builder(), str_contents, contents);
-				value
-			}
-		}),
-		Expression::Array(_e) => todo!(),
+				LLVMConstPtrToInt(ptr, env.datatypes().int)
+			};
+
+			let arr = LLVMBuildAlloca(
+				env.builder(),
+				LLVMArrayType(element_ty, elements.len() as u32),
+				name.as_ptr(),
+			);
+			let arr_value =
+				LLVMConstArray(element_ty, elements.as_mut_ptr(), elements.len() as u32);
+			LLVMBuildStore(env.builder(), arr_value, arr);
+
+			Some(LLVMConstNamedStruct(
+				env.datatypes().array,
+				[
+					LLVMConstInt(
+						LLVMStructGetTypeAtIndex(env.datatypes().array, 0),
+						elements.len() as u64,
+						0,
+					),
+					size,
+					arr,
+				]
+				.as_mut_ptr(),
+				3,
+			))
+		}
 		Expression::Variable(e) => {
 			if let Some(var) = env.find_variable(e.name()) {
-				let name = CString::new("var").unwrap();
-				// Load the value at the stack pointer of this variable.
-				Some(LLVMBuildLoad(env.builder(), var, name.as_ptr()))
+				if let Ty::Array(_, _) = ctx.resolve_ref(&e.ty()) {
+					Some(var)
+				} else {
+					let name = CString::new("var").unwrap();
+					// Load the value at the stack pointer of this variable.
+					Some(LLVMBuildLoad(env.builder(), var, name.as_ptr()))
+				}
 			} else if e.name() == "print" {
 				// Based on the argument return the appropriate
 				// LLVM print function.
@@ -93,7 +127,27 @@ pub unsafe fn generate_expr<'a>(
 				todo!()
 			}
 		}
-		Expression::IndexOf(_) => todo!(),
+		Expression::IndexOf(e) => {
+			let name = CString::new("res").unwrap();
+			// Generate the IR for the expression.
+			let arr = generate_expr(ctx, e.expression(), env).unwrap();
+			// Generate the IR for the index.
+			let idx = generate_expr(ctx, e.index(), env).unwrap();
+
+			Some(LLVMBuildCall(
+				env.builder(),
+				match ctx.resolve_ref(&e.ty()) {
+					Ty::Int(_) => env.array_element_fns().int,
+					Ty::Float(_) => env.array_element_fns().float,
+					Ty::String(_) => env.array_element_fns().string,
+					Ty::Boolean(_) => env.array_element_fns().boolean,
+					_ => todo!(),
+				},
+				[arr, idx].as_mut_ptr(),
+				2,
+				name.as_ptr(),
+			))
+		}
 		Expression::PropertyOf(_e) => todo!(),
 		Expression::Call(e) => {
 			let name = CString::new("res").unwrap();
