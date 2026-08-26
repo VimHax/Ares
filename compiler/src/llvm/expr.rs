@@ -146,11 +146,14 @@ pub unsafe fn generate_expr<'a>(
 			}
 		}
 		Expression::Unary(e) => match e.operator() {
-			UnaryOperator::Minus => Some(LLVMBuildNeg(
-				env.builder(),
-				generate_expr(ctx, e.operand(), env).expect("can't be void"),
-				name.as_ptr(),
-			)),
+			UnaryOperator::Minus => {
+				let op = generate_expr(ctx, e.operand(), env).expect("can't be void");
+				match ctx.resolve_ref(&e.operand().ty()) {
+					Ty::Int(_) => Some(LLVMBuildNeg(env.builder(), op, name.as_ptr())),
+					Ty::Float(_) => Some(LLVMBuildFNeg(env.builder(), op, name.as_ptr())),
+					_ => unreachable!(),
+				}
+			}
 			UnaryOperator::Not => Some(LLVMBuildXor(
 				env.builder(),
 				generate_expr(ctx, e.operand(), env).expect("can't be void"),
