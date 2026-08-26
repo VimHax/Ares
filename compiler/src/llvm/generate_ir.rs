@@ -326,6 +326,13 @@ pub unsafe fn generate_ir(
 				assert!(!bb.is_null());
 				LLVMPositionBuilderAtEnd(builder, bb);
 
+				// Create a global "%s" string.
+				let format_str = CString::new("%s\n").unwrap();
+				let name = CString::new("string-fmt-str").unwrap();
+				let format_str =
+					LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
+				assert!(!format_str.is_null());
+
 				// Get the char pointer in the string struct. (String.chars)
 				let string = LLVMGetParam(f, 0);
 				let name = CString::new("string-contents-ptr").unwrap();
@@ -334,13 +341,13 @@ pub unsafe fn generate_ir(
 				let name = CString::new("string-contents").unwrap();
 				let string = LLVMBuildLoad(builder, string, name.as_ptr());
 
-				// Call printf(String.chars).
+				// Call printf("%s", String.chars).
 				let name = CString::new("res").unwrap();
 				LLVMBuildCall(
 					builder,
 					printf_fn,
-					vec![string].as_mut_ptr(),
-					1,
+					vec![format_str, string].as_mut_ptr(),
+					2,
 					name.as_ptr(),
 				);
 
