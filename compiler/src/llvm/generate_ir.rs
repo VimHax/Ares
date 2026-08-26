@@ -1,4 +1,4 @@
-use llvm_sys::{core::*, prelude::*};
+use llvm_sys::{core::*, prelude::*, LLVMModule, LLVMType, LLVMValue};
 use std::{collections::HashMap, ffi::CString};
 
 use analyzer::{
@@ -133,6 +133,25 @@ pub unsafe fn ty_to_ir(ty: &Ty, datatypes: &DataTypes) -> LLVMTypeRef {
 	}
 }
 
+unsafe fn add_function(
+	module: *mut LLVMModule,
+	name: &str,
+	parameters: &mut [*mut LLVMType],
+	return_type: *mut LLVMType,
+) -> *mut LLVMValue {
+	let fn_type = LLVMFunctionType(
+		return_type,
+		parameters.as_mut_ptr(),
+		parameters.len() as u32,
+		0,
+	);
+	assert!(!fn_type.is_null());
+	let name = CString::new(name).unwrap();
+	let fn_value = LLVMAddFunction(module, name.as_ptr(), fn_type);
+	assert!(!fn_value.is_null());
+	fn_value
+}
+
 /// Generate LLVM IR for a given AST.
 pub unsafe fn generate_ir(
 	context: LLVMContextRef,
@@ -163,199 +182,11 @@ pub unsafe fn generate_ir(
 		},
 	};
 
-	let print_fns = {
-		// This is the C/C++ `printf` function.
-		// This function should get linked and so calling this function
-		// should print things to stdout.
-		let fn_type = LLVMFunctionType(i32_type, vec![i8_ptr_type].as_mut_ptr(), 1, 1);
-		assert!(!fn_type.is_null());
-		let name = CString::new("printf").unwrap();
-		let printf_fn = LLVMAddFunction(module, name.as_ptr(), fn_type);
-		assert!(!printf_fn.is_null());
-		PrintFns {
-			int: {
-				// Declare fn print-int(Int) -> Void
-				let fn_type =
-					LLVMFunctionType(datatypes.void, vec![datatypes.int].as_mut_ptr(), 1, 0);
-				assert!(!fn_type.is_null());
-				let name = CString::new("print-int").unwrap();
-				let f = LLVMAddFunction(module, name.as_ptr(), fn_type);
-				assert!(!f.is_null());
-
-				// Create the function body.
-				let name = CString::new("entry").unwrap();
-				let bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				assert!(!bb.is_null());
-				LLVMPositionBuilderAtEnd(builder, bb);
-
-				// Create a global "%i" string.
-				let format_str = CString::new("%i\n").unwrap();
-				let name = CString::new("int-fmt-str").unwrap();
-				let format_str =
-					LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
-				assert!(!format_str.is_null());
-
-				// Call printf("%i", Int)
-				let name = CString::new("res").unwrap();
-				LLVMBuildCall(
-					builder,
-					printf_fn,
-					vec![format_str, LLVMGetParam(f, 0)].as_mut_ptr(),
-					2,
-					name.as_ptr(),
-				);
-
-				// Return void.
-				LLVMBuildRetVoid(builder);
-				f
-			},
-			float: {
-				// Declare fn print-float(Float) -> Void
-				let fn_type =
-					LLVMFunctionType(datatypes.void, vec![datatypes.float].as_mut_ptr(), 1, 0);
-				assert!(!fn_type.is_null());
-				let name = CString::new("print-float").unwrap();
-				let f = LLVMAddFunction(module, name.as_ptr(), fn_type);
-				assert!(!f.is_null());
-
-				// Create the function body.
-				let name = CString::new("entry").unwrap();
-				let bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				assert!(!bb.is_null());
-				LLVMPositionBuilderAtEnd(builder, bb);
-
-				// Create a global "%f" string.
-				let format_str = CString::new("%f\n").unwrap();
-				let name = CString::new("float-fmt-str").unwrap();
-				let format_str =
-					LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
-				assert!(!format_str.is_null());
-
-				// Call printf("%f", Float)
-				let name = CString::new("res").unwrap();
-				LLVMBuildCall(
-					builder,
-					printf_fn,
-					vec![format_str, LLVMGetParam(f, 0)].as_mut_ptr(),
-					2,
-					name.as_ptr(),
-				);
-
-				// Return void.
-				LLVMBuildRetVoid(builder);
-				f
-			},
-			boolean: {
-				// Declare fn print-boolean(Boolean) -> Void
-				let fn_type =
-					LLVMFunctionType(datatypes.void, vec![datatypes.boolean].as_mut_ptr(), 1, 0);
-				assert!(!fn_type.is_null());
-				let name = CString::new("print-boolean").unwrap();
-				let f = LLVMAddFunction(module, name.as_ptr(), fn_type);
-				assert!(!f.is_null());
-
-				// Create the function body.
-				let name = CString::new("entry").unwrap();
-				let bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				assert!(!bb.is_null());
-				LLVMPositionBuilderAtEnd(builder, bb);
-
-				// if Boolean == true { then_bb } else { else_bb }
-				let name = CString::new("then").unwrap();
-				let then_bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				let name = CString::new("else").unwrap();
-				let else_bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				LLVMBuildCondBr(builder, LLVMGetParam(f, 0), then_bb, else_bb);
-				{
-					// Create a global "true" string.
-					LLVMPositionBuilderAtEnd(builder, then_bb);
-					let format_str = CString::new("true\n").unwrap();
-					let name = CString::new("bool-true-fmt-str").unwrap();
-					let true_str =
-						LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
-
-					// Call printf("true").
-					let name = CString::new("res").unwrap();
-					LLVMBuildCall(
-						builder,
-						printf_fn,
-						vec![true_str].as_mut_ptr(),
-						1,
-						name.as_ptr(),
-					);
-
-					// Return void.
-					LLVMBuildRetVoid(builder);
-				}
-				{
-					// Create a global "false" string.
-					LLVMPositionBuilderAtEnd(builder, else_bb);
-					let format_str = CString::new("false\n").unwrap();
-					let name = CString::new("bool-false-fmt_str").unwrap();
-					let false_str =
-						LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
-
-					// Call printf("false").
-					let name = CString::new("res").unwrap();
-					LLVMBuildCall(
-						builder,
-						printf_fn,
-						vec![false_str].as_mut_ptr(),
-						1,
-						name.as_ptr(),
-					);
-
-					// Return void.
-					LLVMBuildRetVoid(builder);
-				}
-
-				f
-			},
-			string: {
-				// Declare fn print-string(String) -> Void
-				let fn_type =
-					LLVMFunctionType(datatypes.void, vec![datatypes.string].as_mut_ptr(), 1, 0);
-				assert!(!fn_type.is_null());
-				let name = CString::new("print-string").unwrap();
-				let f = LLVMAddFunction(module, name.as_ptr(), fn_type);
-				assert!(!f.is_null());
-
-				// Create the function body.
-				let name = CString::new("entry").unwrap();
-				let bb = LLVMAppendBasicBlockInContext(context, f, name.as_ptr());
-				assert!(!bb.is_null());
-				LLVMPositionBuilderAtEnd(builder, bb);
-
-				// Create a global "%s" string.
-				let format_str = CString::new("%s\n").unwrap();
-				let name = CString::new("string-fmt-str").unwrap();
-				let format_str =
-					LLVMBuildGlobalStringPtr(builder, format_str.as_ptr(), name.as_ptr());
-				assert!(!format_str.is_null());
-
-				// Get the char pointer in the string struct. (String.chars)
-				let string = LLVMGetParam(f, 0);
-				let name = CString::new("string-contents-ptr").unwrap();
-				let string =
-					LLVMBuildStructGEP2(builder, datatypes.string, string, 1, name.as_ptr());
-				let name = CString::new("string-contents").unwrap();
-				let string = LLVMBuildLoad(builder, string, name.as_ptr());
-
-				// Call printf("%s", String.chars).
-				let name = CString::new("res").unwrap();
-				LLVMBuildCall(
-					builder,
-					printf_fn,
-					vec![format_str, string].as_mut_ptr(),
-					2,
-					name.as_ptr(),
-				);
-
-				// Return void.
-				LLVMBuildRetVoid(builder);
-				f
-			},
-		}
+	let print_fns = PrintFns {
+		int: add_function(module, "print_int", &mut [datatypes.int], void_type),
+		float: add_function(module, "print_float", &mut [datatypes.float], void_type),
+		boolean: add_function(module, "print_boolean", &mut [datatypes.boolean], void_type),
+		string: add_function(module, "print_string", &mut [datatypes.string], void_type),
 	};
 
 	// String#len() method implementation.
