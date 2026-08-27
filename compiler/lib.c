@@ -34,14 +34,6 @@ Float round_float(Float f) {
 	return round(f);
 }
 
-Int to_int(Float f) {
-	return (Int) f;
-}
-
-Float to_float(Int i) {
-	return (Float) i;
-}
-
 void print_int(Int i) {
 	printf("%li", i);
 }
@@ -102,7 +94,7 @@ Int len_array(Array* a) {
 }
 
 void exit_if_out_of_bounds(Array* a, Int idx) {
-	if (idx >= a->len) {
+	if (idx < 0 || idx >= a->len) {
 		printf("ILLEGAL OUT OF BOUNDS ARRAY INDEX - LENGTH: %li, INDEX: %li\n", a->len, idx);
 		exit(1);
 	}

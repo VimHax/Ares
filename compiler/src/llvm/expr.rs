@@ -208,23 +208,25 @@ pub unsafe fn generate_expr<'a>(
 
 			match e.name().as_str() {
 				// Int#to_float
-				"to_float" => {
-					let mut args = vec![expr];
-					Some(LLVMBuildCall(
-						env.builder(),
-						env.helper_fns().to_float,
-						args.as_mut_ptr(),
-						args.len() as u32,
-						name.as_ptr(),
-					))
-				}
-				// Float#to_int, Float#floor, Float#ceil, Float#round
-				"to_int" | "floor" | "ceil" | "round" => {
+				"to_float" => Some(LLVMBuildSIToFP(
+					env.builder(),
+					expr,
+					env.datatypes().float,
+					name.as_ptr(),
+				)),
+				// Float#to_int
+				"to_int" => Some(LLVMBuildFPToSI(
+					env.builder(),
+					expr,
+					env.datatypes().int,
+					name.as_ptr(),
+				)),
+				// Float#floor, Float#ceil, Float#round
+				"floor" | "ceil" | "round" => {
 					let mut args = vec![expr];
 					Some(LLVMBuildCall(
 						env.builder(),
 						match e.name().as_str() {
-							"to_int" => env.helper_fns().to_int,
 							"floor" => env.helper_fns().floor_float,
 							"ceil" => env.helper_fns().ceil_float,
 							"round" => env.helper_fns().round_float,

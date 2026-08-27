@@ -24,9 +24,6 @@ pub struct HelperFns {
 	pub ceil_float: LLVMValueRef,
 	pub round_float: LLVMValueRef,
 
-	pub to_float: LLVMValueRef,
-	pub to_int: LLVMValueRef,
-
 	pub prompt_int: LLVMValueRef,
 	pub prompt_float: LLVMValueRef,
 
@@ -236,9 +233,6 @@ pub unsafe fn generate_ir(
 			&mut [datatypes.float],
 			datatypes.float,
 		),
-
-		to_int: add_function(module, "to_int", &mut [datatypes.float], datatypes.int),
-		to_float: add_function(module, "to_float", &mut [datatypes.int], datatypes.float),
 
 		prompt_int: add_function(module, "prompt_int", &mut [datatypes.string], datatypes.int),
 		prompt_float: add_function(
