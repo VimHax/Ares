@@ -167,7 +167,7 @@ fn main() {
 		"{:?}",
 		Command::new("sh")
 			.arg("-c")
-			.arg(format!("clang {} lib.c -o {}", obj_output, output))
+			.arg(format!("clang {} lib.c -o {} -lm", obj_output, output))
 			.output()
 			.expect("failed to execute process")
 	);

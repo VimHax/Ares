@@ -18,20 +18,35 @@ pub struct DataTypes {
 	pub void: LLVMTypeRef,
 }
 
-/// Global `print` variants for all possible input types.
-pub struct PrintFns {
-	pub int: LLVMValueRef,
-	pub float: LLVMValueRef,
-	pub boolean: LLVMValueRef,
-	pub string: LLVMValueRef,
-}
+/// Helper functions.
+pub struct HelperFns {
+	pub floor_float: LLVMValueRef,
+	pub ceil_float: LLVMValueRef,
+	pub round_float: LLVMValueRef,
 
-/// Global array element function variants for all possible input types.
-pub struct ArrayElementFns {
-	pub int: LLVMValueRef,
-	pub float: LLVMValueRef,
-	pub boolean: LLVMValueRef,
-	pub string: LLVMValueRef,
+	pub to_float: LLVMValueRef,
+	pub to_int: LLVMValueRef,
+
+	pub prompt_int: LLVMValueRef,
+	pub prompt_float: LLVMValueRef,
+
+	pub len_string: LLVMValueRef,
+	pub len_array: LLVMValueRef,
+
+	pub index_of_int: LLVMValueRef,
+	pub index_of_float: LLVMValueRef,
+	pub index_of_boolean: LLVMValueRef,
+	pub index_of_string: LLVMValueRef,
+
+	pub print_int: LLVMValueRef,
+	pub print_float: LLVMValueRef,
+	pub print_boolean: LLVMValueRef,
+	pub print_string: LLVMValueRef,
+
+	pub println_int: LLVMValueRef,
+	pub println_float: LLVMValueRef,
+	pub println_boolean: LLVMValueRef,
+	pub println_string: LLVMValueRef,
 }
 
 /// Keeps track of all the necessary state which is
@@ -44,9 +59,7 @@ pub struct Environment<'a> {
 	builder: LLVMBuilderRef,
 	datatypes: DataTypes,
 	fns: HashMap<String, LLVMValueRef>,
-	print_fns: PrintFns,
-	array_element_fns: ArrayElementFns,
-	string_len_fn: LLVMValueRef,
+	helper_fns: HelperFns,
 	scopes: Vec<HashMap<&'a str, LLVMValueRef>>,
 	loops: Vec<LLVMBasicBlockRef>,
 	current_fn: Option<LLVMValueRef>,
@@ -61,16 +74,8 @@ impl<'a> Environment<'a> {
 		self.builder
 	}
 
-	pub fn print_fns(&self) -> &PrintFns {
-		&self.print_fns
-	}
-
-	pub fn array_element_fns(&self) -> &ArrayElementFns {
-		&self.array_element_fns
-	}
-
-	pub fn string_len_fn(&self) -> LLVMValueRef {
-		self.string_len_fn
+	pub fn helper_fns(&self) -> &HelperFns {
+		&self.helper_fns
 	}
 
 	pub fn datatypes(&self) -> &DataTypes {
@@ -212,47 +217,80 @@ pub unsafe fn generate_ir(
 		},
 	};
 
-	let print_fns = PrintFns {
-		int: add_function(module, "print_int", &mut [datatypes.int], void_type),
-		float: add_function(module, "print_float", &mut [datatypes.float], void_type),
-		boolean: add_function(module, "print_boolean", &mut [datatypes.boolean], void_type),
-		string: add_function(module, "print_string", &mut [datatypes.string], void_type),
-	};
-
-	let array_element_fns = ArrayElementFns {
-		int: add_function(
+	let helper_fns = HelperFns {
+		floor_float: add_function(
 			module,
-			"get_array_element_int",
+			"floor_float",
+			&mut [datatypes.float],
+			datatypes.float,
+		),
+		ceil_float: add_function(
+			module,
+			"ceil_float",
+			&mut [datatypes.float],
+			datatypes.float,
+		),
+		round_float: add_function(
+			module,
+			"round_float",
+			&mut [datatypes.float],
+			datatypes.float,
+		),
+
+		to_int: add_function(module, "to_int", &mut [datatypes.float], datatypes.int),
+		to_float: add_function(module, "to_float", &mut [datatypes.int], datatypes.float),
+
+		prompt_int: add_function(module, "prompt_int", &mut [datatypes.string], datatypes.int),
+		prompt_float: add_function(
+			module,
+			"prompt_float",
+			&mut [datatypes.string],
+			datatypes.float,
+		),
+
+		len_string: add_function(module, "len_string", &mut [datatypes.string], datatypes.int),
+		len_array: add_function(module, "len_array", &mut [datatypes.array], datatypes.int),
+
+		index_of_int: add_function(
+			module,
+			"index_of_int",
 			&mut [datatypes.array, datatypes.int],
 			datatypes.int,
 		),
-		float: add_function(
+		index_of_float: add_function(
 			module,
-			"get_array_element_float",
+			"index_of_float",
 			&mut [datatypes.array, datatypes.int],
 			datatypes.float,
 		),
-		boolean: add_function(
+		index_of_boolean: add_function(
 			module,
-			"get_array_element_boolean",
+			"index_of_boolean",
 			&mut [datatypes.array, datatypes.int],
 			datatypes.boolean,
 		),
-		string: add_function(
+		index_of_string: add_function(
 			module,
-			"get_array_element_string",
+			"index_of_string",
 			&mut [datatypes.array, datatypes.int],
 			datatypes.string,
 		),
-	};
 
-	// String#len() method implementation.
-	let string_len_fn = add_function(
-		module,
-		"get_string_len",
-		&mut [datatypes.string],
-		datatypes.int,
-	);
+		print_int: add_function(module, "print_int", &mut [datatypes.int], void_type),
+		print_float: add_function(module, "print_float", &mut [datatypes.float], void_type),
+		print_boolean: add_function(module, "print_boolean", &mut [datatypes.boolean], void_type),
+		print_string: add_function(module, "print_string", &mut [datatypes.string], void_type),
+
+		println_int: add_function(module, "println_int", &mut [datatypes.int], void_type),
+		println_float: add_function(module, "println_float", &mut [datatypes.float], void_type),
+		println_boolean: add_function(
+			module,
+			"println_boolean",
+			&mut [datatypes.boolean],
+			void_type,
+		),
+		println_string: add_function(module, "println_string", &mut [datatypes.string], void_type),
+	};
 
 	// Generate all the function declarations ahead of time
 	// to support self and forward references.
@@ -278,9 +316,7 @@ pub unsafe fn generate_ir(
 		builder,
 		datatypes,
 		fns,
-		string_len_fn,
-		print_fns,
-		array_element_fns,
+		helper_fns,
 		scopes: vec![],
 		loops: vec![],
 		current_fn: None,

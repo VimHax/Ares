@@ -65,31 +65,36 @@ pub fn analyze_expr(
 		Expression::Variable(e) => {
 			if let Some(ty) = env.find_variable(e.name()) {
 				Expression::Variable(e.analyze(ty, ExitStatus::new()))
-			}
-			// If the name of the variable is "print" then
-			// return the type of the global print function.
-			else if e.name() == "print" {
-				// p :: Int || Float || Boolean || String
-				let p = ctx.new_possibility(
-					vec![
-						Ty::Int(full_span.clone()),
-						Ty::Float(full_span.clone()),
-						Ty::Boolean(full_span.clone()),
-						Ty::String(full_span.clone()),
-					],
-					full_span.clone(),
-				);
-
-				// fn_ty :: Fn(p) -> Void
-				let fn_ty = ctx.new_ty(Ty::Fn(
-					vec![p],
-					Box::new(Ty::Void(full_span.clone())),
-					full_span,
-				));
-
-				Expression::Variable(e.analyze(fn_ty, ExitStatus::new()))
 			} else {
-				return Err(TypeError::UnresolvedVariable(full_span));
+				let fn_ty = match e.name().as_str() {
+					"print" | "println" => {
+						// p :: Int || Float || Boolean || String
+						let p = ctx.new_possibility(
+							vec![
+								Ty::Int(full_span.clone()),
+								Ty::Float(full_span.clone()),
+								Ty::Boolean(full_span.clone()),
+								Ty::String(full_span.clone()),
+							],
+							full_span.clone(),
+						);
+
+						// fn_ty :: Fn(p) -> Void
+						Ty::Fn(vec![p], Box::new(Ty::Void(full_span.clone())), full_span)
+					}
+					"prompt" => {
+						// p :: Int || Float
+						let p = ctx.new_possibility(
+							vec![Ty::Int(full_span.clone()), Ty::Float(full_span.clone())],
+							full_span.clone(),
+						);
+
+						// fn_ty :: Fn(String) -> p
+						Ty::Fn(vec![Ty::String(full_span.clone())], Box::new(p), full_span)
+					}
+					_ => return Err(TypeError::UnresolvedVariable(full_span)),
+				};
+				Expression::Variable(e.analyze(ctx.new_ty(fn_ty), ExitStatus::new()))
 			}
 		}
 		// e[index] //
@@ -182,20 +187,73 @@ pub fn analyze_expr(
 					e.span().clone(),
 				);
 
-				// cmp_ty :: if name == "len" then Fn() -> Int
-				let cmp_ty = if name == "len" {
-					// String == e
-					ctx.add_constraint(
-						(Ty::String(e.span().clone()), Ty::TyRef(e.ty())),
-						e.span().clone(),
-					);
-					Ty::Fn(
-						vec![],
-						Box::new(Ty::Int(full_span.clone())),
-						full_span.clone(),
-					)
-				} else {
-					todo!();
+				let cmp_ty = match name.as_str() {
+					// Fn() -> Int
+					"len" => {
+						// array_inner :: ?
+						let array_inner = ctx.new_unknown(full_span.clone());
+
+						// p :: String || Array<?>
+						let p = ctx.new_possibility(
+							vec![
+								Ty::String(e.span().clone()),
+								Ty::Array(Box::new(array_inner.clone()), e.span().clone()),
+							],
+							e.span().clone(),
+						);
+
+						// String || Array<?> == e
+						ctx.add_constraint((p, Ty::TyRef(e.ty())), e.span().clone());
+
+						Ty::Fn(
+							vec![],
+							Box::new(Ty::Int(full_span.clone())),
+							full_span.clone(),
+						)
+					}
+					// Fn() -> Float
+					"floor" | "ceil" | "round" => {
+						// Float == e
+						ctx.add_constraint(
+							(Ty::Float(e.span().clone()), Ty::TyRef(e.ty())),
+							e.span().clone(),
+						);
+
+						Ty::Fn(
+							vec![],
+							Box::new(Ty::Float(full_span.clone())),
+							full_span.clone(),
+						)
+					}
+					// Fn() -> Int
+					"to_int" => {
+						// Float == e
+						ctx.add_constraint(
+							(Ty::Float(e.span().clone()), Ty::TyRef(e.ty())),
+							e.span().clone(),
+						);
+
+						Ty::Fn(
+							vec![],
+							Box::new(Ty::Int(full_span.clone())),
+							full_span.clone(),
+						)
+					}
+					// Fn() -> Float
+					"to_float" => {
+						// Int == e
+						ctx.add_constraint(
+							(Ty::Int(e.span().clone()), Ty::TyRef(e.ty())),
+							e.span().clone(),
+						);
+
+						Ty::Fn(
+							vec![],
+							Box::new(Ty::Float(full_span.clone())),
+							full_span.clone(),
+						)
+					}
+					_ => todo!(),
 				};
 
 				// cmp_ty == fn_ty

@@ -99,32 +99,55 @@ pub unsafe fn generate_expr<'a>(
 		}
 		Expression::Variable(e) => {
 			if let Some(var) = env.find_variable(e.name()) {
-				if let Ty::Array(_, _) = ctx.resolve_ref(&e.ty()) {
-					Some(var)
-				} else {
-					let name = CString::new("var").unwrap();
-					// Load the value at the stack pointer of this variable.
-					Some(LLVMBuildLoad(env.builder(), var, name.as_ptr()))
-				}
-			} else if e.name() == "print" {
-				// Based on the argument return the appropriate
-				// LLVM print function.
-				if let Ty::Fn(args, _, _) = ctx.resolve_ref(&e.ty()) {
-					Some(match args[0] {
-						Ty::Int(_) => env.print_fns().int,
-						Ty::Float(_) => env.print_fns().float,
-						Ty::Boolean(_) => env.print_fns().boolean,
-						Ty::String(_) => env.print_fns().string,
-						_ => todo!(),
-					})
-				} else {
-					todo!()
-				}
+				let name = CString::new("var").unwrap();
+				// Load the value at the stack pointer of this variable.
+				Some(LLVMBuildLoad(env.builder(), var, name.as_ptr()))
 			} else if let Some(f) = env.get_fn(e.name()) {
 				// Return a function pointer.
 				Some(f)
 			} else {
-				todo!()
+				// Based on the argument return the appropriate
+				// LLVM function.
+				match e.name().as_str() {
+					"prompt" => {
+						if let Ty::Fn(_, ret, _) = ctx.resolve_ref(&e.ty()) {
+							Some(match ret.as_ref() {
+								Ty::Int(_) => env.helper_fns().prompt_int,
+								Ty::Float(_) => env.helper_fns().prompt_float,
+								_ => todo!(),
+							})
+						} else {
+							todo!()
+						}
+					}
+					"print" => {
+						if let Ty::Fn(args, _, _) = ctx.resolve_ref(&e.ty()) {
+							Some(match args[0] {
+								Ty::Int(_) => env.helper_fns().print_int,
+								Ty::Float(_) => env.helper_fns().print_float,
+								Ty::Boolean(_) => env.helper_fns().print_boolean,
+								Ty::String(_) => env.helper_fns().print_string,
+								_ => todo!(),
+							})
+						} else {
+							todo!()
+						}
+					}
+					"println" => {
+						if let Ty::Fn(args, _, _) = ctx.resolve_ref(&e.ty()) {
+							Some(match args[0] {
+								Ty::Int(_) => env.helper_fns().println_int,
+								Ty::Float(_) => env.helper_fns().println_float,
+								Ty::Boolean(_) => env.helper_fns().println_boolean,
+								Ty::String(_) => env.helper_fns().println_string,
+								_ => todo!(),
+							})
+						} else {
+							todo!()
+						}
+					}
+					_ => todo!(),
+				}
 			}
 		}
 		Expression::IndexOf(e) => {
@@ -134,16 +157,19 @@ pub unsafe fn generate_expr<'a>(
 			// Generate the IR for the index.
 			let idx = generate_expr(ctx, e.index(), env).unwrap();
 
+			let arr_temp = LLVMBuildAlloca(env.builder(), env.datatypes().array, name.as_ptr());
+			LLVMBuildStore(env.builder(), arr, arr_temp);
+
 			Some(LLVMBuildCall(
 				env.builder(),
 				match ctx.resolve_ref(&e.ty()) {
-					Ty::Int(_) => env.array_element_fns().int,
-					Ty::Float(_) => env.array_element_fns().float,
-					Ty::String(_) => env.array_element_fns().string,
-					Ty::Boolean(_) => env.array_element_fns().boolean,
+					Ty::Int(_) => env.helper_fns().index_of_int,
+					Ty::Float(_) => env.helper_fns().index_of_float,
+					Ty::String(_) => env.helper_fns().index_of_string,
+					Ty::Boolean(_) => env.helper_fns().index_of_boolean,
 					_ => todo!(),
 				},
-				[arr, idx].as_mut_ptr(),
+				[arr_temp, idx].as_mut_ptr(),
 				2,
 				name.as_ptr(),
 			))
@@ -176,27 +202,63 @@ pub unsafe fn generate_expr<'a>(
 			}
 		}
 		Expression::NamedCall(e) => {
-			// The String#len method.
-			if e.name() == "len" {
-				let name = CString::new("res").unwrap();
-				// Generate the IR for the expression.
-				let expr = generate_expr(ctx, e.expression(), env).unwrap();
-				// The only argument for this method will be
-				// the String struct in question. (self)
-				let mut args = vec![expr];
-				// Call the method.
-				let res = LLVMBuildCall(
-					env.builder(),
-					env.string_len_fn(),
-					args.as_mut_ptr(),
-					args.len() as u32,
-					name.as_ptr(),
-				);
-				// This method must return an Int so
-				// no need to check.
-				Some(res)
-			} else {
-				todo!();
+			let name = CString::new("res").unwrap();
+			// Generate the IR for the expression.
+			let expr = generate_expr(ctx, e.expression(), env).unwrap();
+
+			match e.name().as_str() {
+				// Int#to_float
+				"to_float" => {
+					let mut args = vec![expr];
+					Some(LLVMBuildCall(
+						env.builder(),
+						env.helper_fns().to_float,
+						args.as_mut_ptr(),
+						args.len() as u32,
+						name.as_ptr(),
+					))
+				}
+				// Float#to_int, Float#floor, Float#ceil, Float#round
+				"to_int" | "floor" | "ceil" | "round" => {
+					let mut args = vec![expr];
+					Some(LLVMBuildCall(
+						env.builder(),
+						match e.name().as_str() {
+							"to_int" => env.helper_fns().to_int,
+							"floor" => env.helper_fns().floor_float,
+							"ceil" => env.helper_fns().ceil_float,
+							"round" => env.helper_fns().round_float,
+							_ => unreachable!(),
+						},
+						args.as_mut_ptr(),
+						args.len() as u32,
+						name.as_ptr(),
+					))
+				}
+				// String#len, Array#len
+				"len" => {
+					let is_array = matches!(ctx.resolve_ref(&e.expression().ty()), Ty::Array(_, _));
+					let mut args = vec![if is_array {
+						let arr_temp =
+							LLVMBuildAlloca(env.builder(), env.datatypes().array, name.as_ptr());
+						LLVMBuildStore(env.builder(), expr, arr_temp);
+						arr_temp
+					} else {
+						expr
+					}];
+					Some(LLVMBuildCall(
+						env.builder(),
+						if is_array {
+							env.helper_fns().len_array
+						} else {
+							env.helper_fns().len_string
+						},
+						args.as_mut_ptr(),
+						args.len() as u32,
+						name.as_ptr(),
+					))
+				}
+				_ => todo!(),
 			}
 		}
 		Expression::Unary(e) => match e.operator() {

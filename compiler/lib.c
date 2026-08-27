@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <math.h>
 
 #ifndef __STDC_IEC_559__
 #error "Requires IEEE 754 floating point!"
@@ -18,28 +19,86 @@ typedef struct {
 typedef struct {
 	Int len;
 	Int element_size;
-	const Int* content;
+	const void* content;
 } Array;
 
+Float floor_float(Float f) {
+	return floor(f);
+}
+
+Float ceil_float(Float f) {
+	return ceil(f);
+}
+
+Float round_float(Float f) {
+	return round(f);
+}
+
+Int to_int(Float f) {
+	return (Int) f;
+}
+
+Float to_float(Int i) {
+	return (Float) i;
+}
+
 void print_int(Int i) {
-	printf("%li\n", i);
+	printf("%li", i);
 }
 
 void print_float(Float f) {
-	printf("%f\n", f);
+	printf("%f", f);
 }
 
 void print_boolean(Boolean b) {
-	if (b) printf("true\n");
-	else printf("false\n");
+	if (b) printf("true");
+	else printf("false");
 }
 
 void print_string(String s) {
-	printf("%s\n", s.content);
+	printf("%s", s.content);
 }
 
-Int get_string_len(String s) {
+void println_int(Int i) {
+	print_int(i);
+	printf("\n");
+}
+
+void println_float(Float f) {
+	print_float(f);
+	printf("\n");
+}
+
+void println_boolean(Boolean b) {
+	print_boolean(b);
+	printf("\n");
+}
+
+void println_string(String s) {
+	print_string(s);
+	printf("\n");
+}
+
+Int prompt_int(String s) {
+	Int i;
+	println_string(s);
+	scanf("%ld", &i);
+	return i;
+}
+
+Float prompt_float(String s) {
+	Float f;
+	println_string(s);
+	scanf("%lf", &f);
+	return f;
+}
+
+Int len_string(String s) {
 	return s.len;
+}
+
+Int len_array(Array* a) {
+	return a->len;
 }
 
 void exit_if_out_of_bounds(Array* a, Int idx) {
@@ -49,25 +108,25 @@ void exit_if_out_of_bounds(Array* a, Int idx) {
 	}
 }
 
-Int get_array_element_int(Array* a, Int idx) {
+Int index_of_int(Array* a, Int idx) {
 	exit_if_out_of_bounds(a, idx);
 	long ptr = ((long) a->content + a->element_size * idx);
 	return *((Int*) ptr);
 }
 
-Float get_array_element_float(Array* a, Int idx) {
+Float index_of_float(Array* a, Int idx) {
 	exit_if_out_of_bounds(a, idx);
 	long ptr = ((long) a->content + a->element_size * idx);
 	return *((Float*) ptr);
 }
 
-Boolean get_array_element_boolean(Array* a, Int idx) {
+Boolean index_of_boolean(Array* a, Int idx) {
 	exit_if_out_of_bounds(a, idx);
 	long ptr = ((long) a->content + a->element_size * idx);
 	return *((Boolean*) ptr);
 }
 
-String get_array_element_string(Array* a, Int idx) {
+String index_of_string(Array* a, Int idx) {
 	exit_if_out_of_bounds(a, idx);
 	long ptr = ((long) a->content + a->element_size * idx);
 	return *((String*) ptr);
