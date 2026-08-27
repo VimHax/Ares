@@ -55,7 +55,6 @@ pub fn tokenize<'a>(source: &'a Source) -> Result<Vec<Token>, ScanError> {
 
 		match c {
 			'+' => consume_2!('+', Operator::Plus, Operator::PlusPlus), // +, ++
-			'/' => consume!(Operator::Slash),                           // /
 			'*' => consume!(Operator::Star),                            // *
 			'^' => consume!(Operator::Caret),                           // ^
 			'=' => consume_2!('=', Operator::Eq, Operator::EqEq),       // =, ==
@@ -71,6 +70,27 @@ pub fn tokenize<'a>(source: &'a Source) -> Result<Vec<Token>, ScanError> {
 			';' => consume!(Operator::SemiColon),                       // ;
 			',' => consume!(Operator::Comma),                           // ,
 			'.' => consume!(Operator::Dot),                             // .
+			// /, // (cannot use `consume!` here because comments are ignored)
+			'/' => {
+				iter.next();
+				span.grow();
+				if let Some('/') = iter.current_char() {
+					// This is a comment, ignore entire line
+					loop {
+						iter.next();
+						if let Some(c) = iter.current_char() {
+							if c == '\n' {
+								iter.next();
+								break;
+							}
+						} else {
+							break;
+						}
+					}
+				} else {
+					tokens.push(Token::new(Operator::Slash, span));
+				}
+			}
 			// -, --, -> (cannot use `consume_2!` here because there are 3 possible tokens)
 			'-' => {
 				iter.next();
