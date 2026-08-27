@@ -301,27 +301,30 @@ fn exponentiation<'a>(
 	check_stmt: bool,
 ) -> Result<Expression<NotAnalyzed>, ParseError> {
 	// Get the first operand.
-	let op1 = unary(iter, check_stmt)?;
-	let t = match iter.current_token() {
-		Some(value) => value,
-		None => return Ok(op1),
-	};
-	// <op1> ^ <op2>
-	if let Some(Operator::Caret) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = exponentiation(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Exponentiate,
-			(op1, op2),
-			span,
-		)));
+	let mut expr = unary(iter, check_stmt)?;
+
+	while let Some(t) = iter.current_token() {
+		// <op1> ^ <op2>
+		if let Some(Operator::Caret) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = unary(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(
+				BinaryOperator::Exponentiate,
+				(expr, next),
+				span,
+			));
+			continue;
+		}
+
+		break;
 	}
-	Ok(op1)
+
+	Ok(expr)
 }
 
 /// Parse `/`, `*` and `mod`.
@@ -330,57 +333,51 @@ fn multiplication<'a>(
 	check_stmt: bool,
 ) -> Result<Expression<NotAnalyzed>, ParseError> {
 	// Get the first operand.
-	let op1 = exponentiation(iter, check_stmt)?;
-	let t = match iter.current_token() {
-		Some(value) => value,
-		None => return Ok(op1),
-	};
-	// <op1> / <op2>
-	if let Some(Operator::Slash) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = multiplication(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Divide,
-			(op1, op2),
-			span,
-		)));
+	let mut expr = exponentiation(iter, check_stmt)?;
+
+	while let Some(t) = iter.current_token() {
+		// <op1> / <op2>
+		if let Some(Operator::Slash) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = exponentiation(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Divide, (expr, next), span));
+			continue;
+		}
+		// <op1> * <op2>
+		if let Some(Operator::Star) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = exponentiation(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Multiply, (expr, next), span));
+			continue;
+		}
+
+		// <op1> mod <op2>
+		if let Some(Operator::Mod) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = exponentiation(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Mod, (expr, next), span));
+			continue;
+		}
+
+		break;
 	}
-	// <op1> * <op2>
-	if let Some(Operator::Star) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = multiplication(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Multiply,
-			(op1, op2),
-			span,
-		)));
-	}
-	// <op1> mod <op2>
-	if let Some(Operator::Mod) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = multiplication(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Mod,
-			(op1, op2),
-			span,
-		)));
-	}
-	Ok(op1)
+
+	Ok(expr)
 }
 
 /// Parse `+` and `-`.
@@ -389,42 +386,39 @@ fn addition<'a>(
 	check_stmt: bool,
 ) -> Result<Expression<NotAnalyzed>, ParseError> {
 	// Get the first operand.
-	let op1 = multiplication(iter, check_stmt)?;
-	let t = match iter.current_token() {
-		Some(value) => value,
-		None => return Ok(op1),
-	};
-	// <op1> + <op2>
-	if let Some(Operator::Plus) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = addition(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Add,
-			(op1, op2),
-			span,
-		)));
+	let mut expr = multiplication(iter, check_stmt)?;
+
+	while let Some(t) = iter.current_token() {
+		// <op1> + <op2>
+		if let Some(Operator::Plus) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = multiplication(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Add, (expr, next), span));
+			continue;
+		}
+
+		// <op1> - <op2>
+		if let Some(Operator::Minus) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = multiplication(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Subtract, (expr, next), span));
+			continue;
+		}
+
+		break;
 	}
-	// <op1> - <op2>
-	if let Some(Operator::Minus) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = addition(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Subtract,
-			(op1, op2),
-			span,
-		)));
-	}
-	Ok(op1)
+
+	Ok(expr)
 }
 
 /// Parse `<`, `<=`, `>` and `>=`.
@@ -551,43 +545,39 @@ fn logical<'a>(
 	check_stmt: bool,
 ) -> Result<Expression<NotAnalyzed>, ParseError> {
 	// Get the first operand.
-	let op1 = equality(iter, check_stmt)?;
-	// Check whether an operator exists.
-	let t = match iter.current_token() {
-		Some(value) => value,
-		None => return Ok(op1),
-	};
-	// <op1> and <op2>
-	if let Some(Operator::And) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = logical(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::And,
-			(op1, op2),
-			span,
-		)));
+	let mut expr = equality(iter, check_stmt)?;
+
+	while let Some(t) = iter.current_token() {
+		// <op1> and <op2>
+		if let Some(Operator::And) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = equality(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::And, (expr, next), span));
+			continue;
+		}
+
+		// <op1> or <op2>
+		if let Some(Operator::Or) = t.operator() {
+			iter.next();
+			// Get the next operand.
+			let next = equality(iter, check_stmt).map_err(|err| match err {
+				ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
+				e => e,
+			})?;
+			let span = Span::combine_span(expr.span(), next.span());
+			expr = Expression::Binary(Binary::new(BinaryOperator::Or, (expr, next), span));
+			continue;
+		}
+
+		break;
 	}
-	// <op1> or <op2>
-	if let Some(Operator::Or) = t.operator() {
-		iter.next();
-		// Get the second operand.
-		let op2 = logical(iter, check_stmt).map_err(|err| match err {
-			ParseError::ExpectedExpressionButFound(s) => ParseError::ExpectedOperandButFound(s),
-			e => e,
-		})?;
-		let span = Span::combine_span(op1.span(), op2.span());
-		return Ok(Expression::Binary(Binary::new(
-			BinaryOperator::Or,
-			(op1, op2),
-			span,
-		)));
-	}
-	Ok(op1)
+
+	Ok(expr)
 }
 
 /// Parse an expression.
