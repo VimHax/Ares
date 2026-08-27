@@ -361,7 +361,25 @@ pub unsafe fn generate_expr<'a>(
 					}
 				}),
 				Ty::String(_) => todo!(),
-				Ty::Boolean(_) => todo!(),
+				Ty::Boolean(_) => Some(match e.operator() {
+					BinaryOperator::And => LLVMBuildAnd(env.builder(), op1, op2, name.as_ptr()),
+					BinaryOperator::Or => LLVMBuildOr(env.builder(), op1, op2, name.as_ptr()),
+					BinaryOperator::Equal => LLVMBuildICmp(
+						env.builder(),
+						LLVMIntPredicate::LLVMIntEQ,
+						op1,
+						op2,
+						name.as_ptr(),
+					),
+					BinaryOperator::NotEqual => LLVMBuildICmp(
+						env.builder(),
+						LLVMIntPredicate::LLVMIntNE,
+						op1,
+						op2,
+						name.as_ptr(),
+					),
+					_ => todo!(),
+				}),
 				Ty::Void(_) => todo!(),
 				Ty::Never(_) => todo!(),
 				Ty::Array(_, _) => todo!(),
