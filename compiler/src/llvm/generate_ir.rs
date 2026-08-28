@@ -58,7 +58,7 @@ pub struct Environment<'a> {
 	fns: HashMap<String, LLVMValueRef>,
 	helper_fns: HelperFns,
 	scopes: Vec<HashMap<&'a str, LLVMValueRef>>,
-	loops: Vec<LLVMBasicBlockRef>,
+	loops: Vec<(LLVMBasicBlockRef, Option<LLVMValueRef>)>,
 	current_fn: Option<LLVMValueRef>,
 }
 
@@ -87,12 +87,12 @@ impl<'a> Environment<'a> {
 		self.current_fn.unwrap()
 	}
 
-	pub fn get_loop(&mut self) -> Option<&LLVMBasicBlockRef> {
-		self.loops.last()
+	pub fn get_loop(&mut self) -> Option<(LLVMBasicBlockRef, Option<LLVMValueRef>)> {
+		self.loops.last().copied()
 	}
 
-	pub fn add_loop(&mut self, bb: LLVMBasicBlockRef) {
-		self.loops.push(bb);
+	pub fn add_loop(&mut self, bb: LLVMBasicBlockRef, value: Option<LLVMValueRef>) {
+		self.loops.push((bb, value));
 	}
 
 	pub fn remove_loop(&mut self) {

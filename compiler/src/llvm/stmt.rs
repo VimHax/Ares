@@ -31,9 +31,14 @@ pub unsafe fn generate_stmt<'a>(
 			}
 			None
 		}
-		Statement::Break(_s) => {
-			assert!(_s.expression().is_none());
-			LLVMBuildBr(env.builder(), *env.get_loop().unwrap());
+		Statement::Break(s) => {
+			let (finally, loop_eval) = env.get_loop().unwrap();
+			if let Some(expr) = s.expression() {
+				if let Some(value) = generate_expr(ctx, expr, env) {
+					LLVMBuildStore(env.builder(), value, loop_eval.unwrap());
+				}
+			}
+			LLVMBuildBr(env.builder(), finally);
 			None
 		}
 		Statement::Let(s) => {
@@ -247,10 +252,19 @@ pub unsafe fn generate_stmt<'a>(
 			// is unnecessary.
 			let finally_bb = if !s.exit_status().will_exit() {
 				let name = CString::new("loop-finally").unwrap();
+				let loop_eval = match ctx.resolve_ref(&s.ty()) {
+					Ty::Void(_) => None,
+					Ty::Never(_) => None,
+					ty => Some(LLVMBuildAlloca(
+						env.builder(),
+						ty_to_ir(ty, env.datatypes()),
+						CString::new("loop-eval").unwrap().as_ptr(),
+					)),
+				};
 				let finally_bb =
 					LLVMAppendBasicBlockInContext(env.context(), env.current_fn(), name.as_ptr());
-				env.add_loop(finally_bb);
-				Some(finally_bb)
+				env.add_loop(finally_bb, loop_eval);
+				Some((finally_bb, loop_eval))
 			} else {
 				None
 			};
@@ -268,11 +282,13 @@ pub unsafe fn generate_stmt<'a>(
 				LLVMBuildBr(env.builder(), loop_bb);
 			}
 
-			if let Some(bb) = finally_bb {
+			if let Some((bb, loop_eval)) = finally_bb {
 				env.remove_loop();
 				LLVMPositionBuilderAtEnd(env.builder(), bb);
+				loop_eval
+			} else {
+				None
 			}
-			None
 		}
 	}
 }
