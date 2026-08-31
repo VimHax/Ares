@@ -22,7 +22,7 @@ fn main() {
 	// Configure clap to parse CLI arguments.
 	let matches = App::new("Ares Compiler")
 		.version("0.1.0")
-		.author("VimHax <vimhax@vimprojects.com>")
+		.author("VimHax <me@vimhax.com>")
 		.about("Compiles Ares source code into machine code.")
 		.arg(
 			Arg::with_name("INPUT")
