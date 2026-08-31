@@ -3,10 +3,12 @@ use codespan_reporting::files::SimpleFile;
 use llvm_sys::{self, core::*, target::*, target_machine::*};
 use std::{
 	ffi::{CStr, CString},
+	io::Write,
 	mem::MaybeUninit,
 	path::Path,
 	process::Command,
 };
+use tempfile::NamedTempFile;
 
 use analyzer::analyze;
 use ares_core::Source;
@@ -17,6 +19,8 @@ mod llvm;
 
 use errors::print_error;
 use llvm::generate_ir;
+
+const HELPER_LIB_SOURCE: &[u8] = include_bytes!("lib.c");
 
 fn main() {
 	// Configure clap to parse CLI arguments.
@@ -163,14 +167,24 @@ fn main() {
 	}
 
 	// Link the object code with Clang.
-	println!(
-		"{:?}",
-		Command::new("sh")
-			.arg("-c")
-			.arg(format!("clang {} lib.c -o {} -lm", obj_output, output))
-			.output()
-			.expect("failed to execute process")
-	);
+	{
+		// FIXME: May not be secure.
+		let mut temp = NamedTempFile::with_suffix(".c").unwrap();
+		temp.write_all(HELPER_LIB_SOURCE).unwrap();
+		println!(
+			"{:?}",
+			Command::new("sh")
+				.arg("-c")
+				.arg(format!(
+					"clang {} {:?} -o {} -lm",
+					obj_output,
+					temp.path(),
+					output
+				))
+				.output()
+				.expect("failed to execute process")
+		);
+	}
 
 	// Run the linked executable.
 	if matches.is_present("run") {
