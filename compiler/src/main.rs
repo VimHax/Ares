@@ -100,7 +100,7 @@ fn main() {
 
 		// Generate LLVM IR.
 		generate_ir(context, module, &ctx, &analyzed);
-		LLVMDumpModule(module);
+		// LLVMDumpModule(module);
 
 		// Initialize all the required components.
 		LLVM_InitializeAllTargetInfos();
@@ -171,19 +171,22 @@ fn main() {
 		// FIXME: May not be secure.
 		let mut temp = NamedTempFile::with_suffix(".c").unwrap();
 		temp.write_all(HELPER_LIB_SOURCE).unwrap();
-		println!(
-			"{:?}",
-			Command::new("sh")
-				.arg("-c")
-				.arg(format!(
-					"clang {} {:?} -o {} -lm",
-					obj_output,
-					temp.path(),
-					output
-				))
-				.output()
-				.expect("failed to execute process")
-		);
+		let output = Command::new("sh")
+			.arg("-c")
+			.arg(format!(
+				"clang {} {:?} -o {} -lm",
+				obj_output,
+				temp.path(),
+				output
+			))
+			.output()
+			.expect("failed to execute process");
+		if output.status.success() {
+			println!("Successfully compiled '{}'.", source.file_name());
+		} else {
+			println!("{:?}", output);
+			return;
+		}
 	}
 
 	// Run the linked executable.

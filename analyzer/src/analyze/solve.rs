@@ -207,7 +207,7 @@ pub fn solve(ctx: &mut Ctx) -> Result<(), TypeError> {
 		// made or invalid possibilities are all recorded in the solver state.
 		for ((lhs, rhs), _) in &processed_eqs {
 			if !is_assignable(lhs, rhs, &mut state, true) {
-				println!("LHS: {:?}, RHS: {:?}", lhs, rhs);
+				// println!("LHS: {:?}, RHS: {:?}", lhs, rhs);
 				return Err(TypeError::Contradiction(vec![lhs.clone(), rhs.clone()]));
 			}
 		}
@@ -223,7 +223,7 @@ pub fn solve(ctx: &mut Ctx) -> Result<(), TypeError> {
 
 		// Resolve all assertions.
 		for (id, ts) in assertions {
-			println!("Assertion: {}, {:?}", id, ts);
+			// println!("Assertion: {}, {:?}", id, ts);
 			let t1 = *ts.first().unwrap();
 			// Check whether all the assertions made to the same
 			// unknown are identical.
@@ -237,7 +237,7 @@ pub fn solve(ctx: &mut Ctx) -> Result<(), TypeError> {
 		}
 
 		if invalid_possibilities.len() != 0 {
-			println!("Invalid possibilities: {:?}", invalid_possibilities);
+			// println!("Invalid possibilities: {:?}", invalid_possibilities);
 			// Process all the invalid possibilities.
 			ctx.remove_possibilities(&invalid_possibilities.into_iter().collect::<Vec<_>>()[..])?;
 		}

@@ -330,7 +330,7 @@ impl Ctx {
 
 	/// Add a new unknown to the context.
 	pub fn new_unknown(&mut self, span: Span) -> Ty {
-		println!("Unknown Created: {}, {:?}", self.unknowns, span);
+		// println!("Unknown Created: {}, {:?}", self.unknowns, span);
 		self.unknowns += 1;
 		Ty::Unknown(self.unknowns - 1, span)
 	}
@@ -511,7 +511,7 @@ impl Ctx {
 
 	/// Flatten all the types in the context.
 	pub fn flatten(&mut self) {
-		println!("Flattening context!");
+		// println!("Flattening context!");
 		self.tys
 			.iter_mut()
 			.map(|entry| {
