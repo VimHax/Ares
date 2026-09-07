@@ -285,7 +285,7 @@ pub unsafe fn generate_stmt<'a>(
 			if let Some((bb, loop_eval)) = finally_bb {
 				env.remove_loop();
 				LLVMPositionBuilderAtEnd(env.builder(), bb);
-				loop_eval
+				loop_eval.map(|x| LLVMBuildLoad(env.builder(), x, name.as_ptr()))
 			} else {
 				None
 			}
