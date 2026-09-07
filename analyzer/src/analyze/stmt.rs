@@ -226,7 +226,6 @@ pub fn analyze_stmt(
 						es.and(b.exit_status());
 						branch_es.or(&es);
 						if !b.exit_status().will_exit() {
-							println!("test");
 							will_exit = false;
 							// ty == b
 							ctx.add_constraint((ty.clone(), Ty::TyRef(b.ty())), b.span().clone());
@@ -262,7 +261,6 @@ pub fn analyze_stmt(
 				es.and(&branch_es);
 				let ty_ref = ctx.new_ty(ty.clone());
 				if es.will_exit() {
-					println!("test");
 					ctx.resolve_unknown(
 						if let Ty::Unknown(id, _) = ty {
 							id
