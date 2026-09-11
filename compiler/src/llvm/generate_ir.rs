@@ -181,7 +181,6 @@ pub unsafe fn generate_ir(
 	let i8_type = LLVMInt8TypeInContext(context); // i8
 	let i8_ptr_type = LLVMPointerType(i8_type, 0); // *i8
 	let void_type = LLVMVoidTypeInContext(context); // void
-	let void_ptr_type = LLVMPointerType(void_type, 0); // *void
 	let i32_type = LLVMInt32TypeInContext(context);
 	let i64_type = LLVMInt64TypeInContext(context);
 
@@ -206,11 +205,11 @@ pub unsafe fn generate_ir(
 			let struct_type = LLVMStructCreateNamed(context, name.as_ptr());
 			LLVMStructSetBody(
 				struct_type,
-				vec![i64_type, i64_type, void_ptr_type].as_mut_ptr(),
+				vec![i64_type, i64_type, i8_ptr_type].as_mut_ptr(),
 				3,
 				0,
 			);
-			LLVMPointerType(struct_type, 0)
+			struct_type
 		},
 	};
 
@@ -243,30 +242,35 @@ pub unsafe fn generate_ir(
 		),
 
 		len_string: add_function(module, "len_string", &mut [datatypes.string], datatypes.int),
-		len_array: add_function(module, "len_array", &mut [datatypes.array], datatypes.int),
+		len_array: add_function(
+			module,
+			"len_array",
+			&mut [LLVMPointerType(datatypes.array, 0)],
+			datatypes.int,
+		),
 
 		index_of_int: add_function(
 			module,
 			"index_of_int",
-			&mut [datatypes.array, datatypes.int],
+			&mut [LLVMPointerType(datatypes.array, 0), datatypes.int],
 			datatypes.int,
 		),
 		index_of_float: add_function(
 			module,
 			"index_of_float",
-			&mut [datatypes.array, datatypes.int],
+			&mut [LLVMPointerType(datatypes.array, 0), datatypes.int],
 			datatypes.float,
 		),
 		index_of_boolean: add_function(
 			module,
 			"index_of_boolean",
-			&mut [datatypes.array, datatypes.int],
+			&mut [LLVMPointerType(datatypes.array, 0), datatypes.int],
 			datatypes.boolean,
 		),
 		index_of_string: add_function(
 			module,
 			"index_of_string",
-			&mut [datatypes.array, datatypes.int],
+			&mut [LLVMPointerType(datatypes.array, 0), datatypes.int],
 			datatypes.string,
 		),
 
@@ -293,7 +297,11 @@ pub unsafe fn generate_ir(
 		match top_level {
 			TopLevel::Function(f) => {
 				// Generate the function signature.
-				let fn_type = ty_to_ir(ctx.resolve_ref(&f.ty()), &datatypes);
+				let fn_type = if f.name() == "main" {
+					LLVMFunctionType(i32_type, [].as_mut_ptr(), 0, 0)
+				} else {
+					ty_to_ir(ctx.resolve_ref(&f.ty()), &datatypes)
+				};
 				assert!(!fn_type.is_null());
 				// Create the LLVM function.
 				let name = CString::new(f.name().as_str()).unwrap();

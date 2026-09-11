@@ -1,4 +1,4 @@
-use llvm_sys::{core::*, prelude::*, LLVMIntPredicate, LLVMRealPredicate};
+use llvm_sys::{core::*, prelude::*, LLVMIntPredicate, LLVMRealPredicate, LLVMValue};
 use std::ffi::CString;
 
 use analyzer::{
@@ -9,6 +9,24 @@ use analyzer::{
 use crate::llvm::generate_ir::ty_to_ir;
 
 use super::{generate_ir::Environment, stmt::generate_stmt};
+
+unsafe fn cast_arr_ptr_to_i8_ptr(arr_ptr: *mut LLVMValue, env: &Environment) -> *mut LLVMValue {
+	let name = CString::new("cast").unwrap();
+	let i8_type = LLVMInt8TypeInContext(env.context()); // i8
+	let i8_ptr_type = LLVMPointerType(i8_type, 0); // *i8
+	let ptr_to_element = LLVMBuildGEP(
+		env.builder(),
+		arr_ptr,
+		[
+			LLVMConstInt(LLVMInt32TypeInContext(env.context()), 0, 0),
+			LLVMConstInt(LLVMInt32TypeInContext(env.context()), 0, 0),
+		]
+		.as_mut_ptr(),
+		2,
+		name.as_ptr(),
+	);
+	LLVMBuildBitCast(env.builder(), ptr_to_element, i8_ptr_type, name.as_ptr())
+}
 
 /// Generate LLVM IR for an AST `Expression<Analyzed>` node.
 pub unsafe fn generate_expr<'a>(
@@ -41,7 +59,7 @@ pub unsafe fn generate_expr<'a>(
 							v.len() as u64,
 							0,
 						),
-						str_contents,
+						cast_arr_ptr_to_i8_ptr(str_contents, env),
 					]
 					.as_mut_ptr(),
 					2,
@@ -82,20 +100,23 @@ pub unsafe fn generate_expr<'a>(
 				LLVMConstArray(element_ty, elements.as_mut_ptr(), elements.len() as u32);
 			LLVMBuildStore(env.builder(), arr_value, arr);
 
-			Some(LLVMConstNamedStruct(
-				env.datatypes().array,
-				[
-					LLVMConstInt(
-						LLVMStructGetTypeAtIndex(env.datatypes().array, 0),
-						elements.len() as u64,
-						0,
-					),
-					size,
-					arr,
-				]
-				.as_mut_ptr(),
-				3,
-			))
+			let value = LLVMGetPoison(env.datatypes().array);
+			let value = LLVMBuildInsertValue(
+				env.builder(),
+				value,
+				LLVMConstInt(env.datatypes().int, elements.len() as u64, 0),
+				0,
+				name.as_ptr(),
+			);
+			let value = LLVMBuildInsertValue(env.builder(), value, size, 1, name.as_ptr());
+			let value = LLVMBuildInsertValue(
+				env.builder(),
+				value,
+				cast_arr_ptr_to_i8_ptr(arr, env),
+				2,
+				name.as_ptr(),
+			);
+			Some(value)
 		}
 		Expression::Variable(e) => {
 			if let Some(var) = env.find_variable(e.name()) {
@@ -176,7 +197,8 @@ pub unsafe fn generate_expr<'a>(
 		}
 		Expression::PropertyOf(_e) => todo!(),
 		Expression::Call(e) => {
-			let name = CString::new("res").unwrap();
+			let is_void = matches!(ctx.resolve_ref(&e.ty()), Ty::Void(_));
+			let name = CString::new(if is_void { "" } else { "res" }).unwrap();
 			// Generate the IR for the expression.
 			let f = generate_expr(ctx, e.expression(), env).unwrap();
 			// Generate the IR to evaluate every argument.
@@ -195,11 +217,7 @@ pub unsafe fn generate_expr<'a>(
 			);
 			// If the function does not return void then return
 			// the value.
-			if let Ty::Void(_) = ctx.resolve_ref(&e.ty()) {
-				None
-			} else {
-				Some(res)
-			}
+			(!is_void).then_some(res)
 		}
 		Expression::NamedCall(e) => {
 			let name = CString::new("res").unwrap();
