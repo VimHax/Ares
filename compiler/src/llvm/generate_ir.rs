@@ -210,7 +210,7 @@ pub unsafe fn generate_ir(
 				3,
 				0,
 			);
-			struct_type
+			LLVMPointerType(struct_type, 0)
 		},
 	};
 
