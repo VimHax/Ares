@@ -91,20 +91,20 @@ pub unsafe fn generate_expr<'a>(
 				LLVMConstPtrToInt(ptr, env.datatypes().int)
 			};
 
-			let arr = LLVMBuildAlloca(
-				env.builder(),
-				LLVMArrayType(element_ty, elements.len() as u32),
-				name.as_ptr(),
-			);
-			let arr_value =
-				LLVMConstArray(element_ty, elements.as_mut_ptr(), elements.len() as u32);
+			let arr_type = LLVMArrayType(element_ty, elements.len() as u32);
+			let arr = LLVMBuildAlloca(env.builder(), arr_type, name.as_ptr());
+			let mut arr_value = LLVMGetPoison(arr_type);
+			for (idx, el) in elements.into_iter().enumerate() {
+				arr_value =
+					LLVMBuildInsertValue(env.builder(), arr_value, el, idx as u32, name.as_ptr());
+			}
 			LLVMBuildStore(env.builder(), arr_value, arr);
 
 			let value = LLVMGetPoison(env.datatypes().array);
 			let value = LLVMBuildInsertValue(
 				env.builder(),
 				value,
-				LLVMConstInt(env.datatypes().int, elements.len() as u64, 0),
+				LLVMConstInt(env.datatypes().int, e.elements().len() as u64, 0),
 				0,
 				name.as_ptr(),
 			);
